@@ -11,15 +11,6 @@ using Microsoft.Azure.Documents;
 
 namespace SBQtoIoTHub
 {
-    public class RootObject
-    {
-        public string ackId { get; set; }
-        public string eventID { get; set; }
-        public string id { get; set; }
-        public string data { get; set; }
-        public string messageId { get; set; }
-        public DateTime publishTime { get; set; }
-    }
     public static class SBQtoIoTHub
     {
         [FunctionName("SBQtoIoTHub")]
@@ -39,13 +30,10 @@ namespace SBQtoIoTHub
             var dBaseCollection = config["cosmosCollection"];
             var iotHubHost = config["iotHubHost"];
 
-            var jsonStream = JsonConvert.DeserializeObject<RootObject>(queueJson);
+            dynamic jsonStream = JsonConvert.DeserializeObject(queueJson);
             string device = jsonStream.id;
-            Console.WriteLine();
-            Console.WriteLine(device);
-            Console.WriteLine();
-            var messagePayload = new Message(Encoding.ASCII.GetBytes(queueJson));
-            Console.WriteLine("After byte payload");
+
+            var messagePayload = new Message(Encoding.UTF8.GetBytes(queueJson));
 
             IDocumentClient client = new DocumentClient(new Uri(dBaseUri), dKey);
             try
@@ -60,13 +48,6 @@ namespace SBQtoIoTHub
 
                 var deviceClient = DeviceClient.CreateFromConnectionString(iotHubConnection, TransportType.Amqp);
                 await deviceClient.SendEventAsync(messagePayload);
-                Console.WriteLine("IoT Hub message sent");
-                Console.WriteLine();
-                Console.WriteLine();
-                Console.WriteLine();
-
-
-
             }
             finally
             {
