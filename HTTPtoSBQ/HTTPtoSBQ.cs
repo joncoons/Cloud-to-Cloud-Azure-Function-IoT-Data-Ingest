@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.ServiceBus;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -10,7 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Microsoft.Extensions.Configuration;
-
+using System.Linq;
 
 namespace HTTPtoSBQ
 {
@@ -37,8 +36,8 @@ namespace HTTPtoSBQ
     {
         [FunctionName("HTTPtoSBQfunction")]
 
-        public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "endpoint")] HttpRequest req,
+        public static async Task Run(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "endpoint")] HttpRequest req,
             [ServiceBus("%serviceBusQueue%", Connection = "serviceBusConStr", EntityType = EntityType.Queue)] IAsyncCollector<string> telemetryOut,
             ILogger log, ExecutionContext context)
         {
@@ -50,44 +49,50 @@ namespace HTTPtoSBQ
                 .AddEnvironmentVariables()
                 .Build();
 
-            var iotHubHost = config["iotHubHost"];
-
-
-
+            string iotHubHost = config["iotHubHost"];
             string IotHubConStr = config["iotHubConStr"];
 
             string json = await new StreamReader(req.Body).ReadToEndAsync();
+            var dmessage = JsonConvert.DeserializeObject<RootObject[]>(json); //Deseriaize array using RootObject class - single array expected=0;
+            Console.WriteLine(dmessage.Count());
+            int messageCount = dmessage.Count();
 
-            var dmessage = JsonConvert.DeserializeObject<RootObject[]>(json); //Deseriaize array using RootObject class - single array expected
-            string ack = dmessage[0].ackId; //Extract ack ID
-            string evntId = dmessage[0].message.attributes.eventID; //Extract event ID
-            string device = dmessage[0].message.attributes.id;  // Extract device id from array
-            string dataConvert = dmessage[0].message.data; // Extract base64 data from array
-            var base64bytes = Convert.FromBase64String(dataConvert); //Convert Base64 to bytes
-            dataConvert = Encoding.UTF8.GetString(base64bytes); // Convert bytes to UTF8 string
-            string msgId = dmessage[0].message.messageId;  //Extract message id from array
-            DateTime pubTime = dmessage[0].message.publishTime; //Extract publish time from array
+            for (int i = 0; i < messageCount; i++) // Loop through array
 
-
-            var atTelemetry = new 
             {
-                ackId = ack,
-                eventID = evntId,
-                id = device,
-                data = dataConvert,
-                messageId = msgId,
-                publishTime = pubTime
-            };
 
-            var messageJSON = JsonConvert.SerializeObject(atTelemetry);
+                string dataConvert = dmessage[i].message.data; // Extract base64 data from array
+                var base64bytes = Convert.FromBase64String(dataConvert); //Convert from Base64 to bytes
+                var dataJson = Encoding.UTF8.GetString(base64bytes); // Convert bytes to UTF8 string
+                var dataDS = JsonConvert.DeserializeObject(dataJson); // Deserialize data JSON
 
-            await telemetryOut.AddAsync(messageJSON);
+                string ack = dmessage[i].ackId; //Extract ack ID
+                string evntId = dmessage[i].message.attributes.eventID; //Extract event ID
+                string device = dmessage[i].message.attributes.id;  // Extract device id from array
+                string msgId = dmessage[i].message.messageId;  //Extract message id from array
+                DateTime pubTime = dmessage[i].message.publishTime; //Extract publish time from array
+                
 
-            log.LogInformation($"**Message Sent to SBQ**:{messageJSON}");
+                var atTelemetry = new
+                {
+                    id = device,
+                    ackId = ack,
+                    eventId = evntId,
+                    messageId = msgId,
+                    publishTime = pubTime,
+                    data = dataDS
 
-            await telemetryOut.FlushAsync();
+                };
 
-            return (ActionResult)new OkResult();
+                var messageJSON = JsonConvert.SerializeObject(atTelemetry);
+
+                await telemetryOut.AddAsync(messageJSON);
+
+                log.LogInformation($"**Message Sent to SBQ**:{messageJSON}");
+
+                await telemetryOut.FlushAsync();
+
+            }
 
         }
 
