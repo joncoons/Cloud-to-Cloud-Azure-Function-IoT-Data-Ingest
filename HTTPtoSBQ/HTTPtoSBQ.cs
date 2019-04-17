@@ -57,7 +57,7 @@ namespace HTTPtoSBQ
             Console.WriteLine(dmessage.Count());
             int messageCount = dmessage.Count();
 
-            for (int i = 0; i < messageCount; i++) // Loop through array
+            for (int i = 0; i <= (messageCount-1); i++) // Loop through array
 
             {
 
